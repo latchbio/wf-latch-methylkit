@@ -34,6 +34,8 @@ def format_bed_files(
     samples: List[Sample], output_directory: LatchOutputDir, track_name: str
 ) -> List[ProcessedBED]:
 
+    track_name = track_name.replace(" ", "_")
+
     output_dir = f"{track_name}/processed_beds"
     output_dirpath = Path(output_dir).resolve()
     output_dirpath.mkdir(parents=True, exist_ok=True)
@@ -92,6 +94,8 @@ def methyl_task(
     difference_val: int = 25,
     q_val: float = 0.01,
 ) -> LatchDir:
+
+    track_name = track_name.replace(" ", "_")
 
     file_names = []
     file_paths = []

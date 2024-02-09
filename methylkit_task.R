@@ -63,3 +63,9 @@ myDiff25p=getMethylDiff(myDiff,difference=difference_val,qvalue=q_val)
 
 write.csv(myDiff25p@.Data,
           paste0(output_dir, "/DMR_regions.csv"), row.names=FALSE)
+
+my_data <- read.csv(paste0(output_dir, "/DMR_regions.csv"))
+new_column_names <- c("chr", "start", "end", "strand", "p_value", "q_value", "percent_difference")
+colnames(my_data) <- new_column_names
+write.csv(my_data, paste0(output_dir, "/DMR_regions.csv"), row.names = FALSE)
+
