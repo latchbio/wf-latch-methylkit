@@ -44,6 +44,17 @@ class ProcessedBED:
     treatment: bool = False
 
 
+class FileFormat(Enum):
+    bismark_cov = "Bismark Coverage File"
+    bismark_cytosine = "Bismark Cytosine Report"
+    bedmethyl = "bedMethyl Format"
+
+
+class Genome(Enum):
+    hg38 = "hg38"
+    hg19 = "hg19"
+
+
 flow = [
     Section(
         "Sample Information",
@@ -52,6 +63,8 @@ flow = [
         ),
         Params(
             "samples",
+            "bed_format",
+            "genome",
             "track_name",
         ),
     ),
@@ -90,6 +103,15 @@ metadata = LatchMetadata(
     parameters={
         "samples": LatchParameter(
             display_name="Input Samples",
+            batch_table_column=True,  # Show this parameter in batched mode.
+            samplesheet=True,
+        ),
+        "genome": LatchParameter(
+            display_name="Select Genome",
+            batch_table_column=True,  # Show this parameter in batched mode.
+        ),
+        "bed_format": LatchParameter(
+            display_name="Select input format",
             batch_table_column=True,  # Show this parameter in batched mode.
         ),
         "track_name": LatchParameter(
@@ -144,7 +166,9 @@ def dmr_methylkit(
     tiling_val: int = 200,
     tile_coverage: int = 10,
     difference_val: int = 25,
-    q_val: float = 0.01,
+    q_val: float = 0.05,
+    bed_format: FileFormat = FileFormat.bismark_cov,
+    genome: Genome = Genome.hg19,
 ) -> LatchDir:
     """Locating differentially methylated regions with methylKit
 
@@ -155,7 +179,33 @@ def dmr_methylkit(
 
     ## Input Requirements
     ### BED File
-    This workflow currently accepts BED files in the [bedMethyl format](https://www.encodeproject.org/data-standards/wgbs/) from ENCODE.
+    This workflow currently accepts 3 kinds of input files:
+    * Bismark Coverage Files
+    * Bismark Cytosine Reports
+    * bedMethyl Files
+
+    #### Bismark Coverage Files
+
+    This file type is an output of the ```bismark2bedGraph``` function of [Bismark](https://felixkrueger.github.io/Bismark/). It contains coverage in the file format below (using 1-based genomic genomic coordinates):
+
+    ```
+    <chromosome> <start position> <end position> <methylation percentage> <count methylated> <count unmethylated>
+    ```
+
+    Typically, these files end in the suffix ```.bismark.cov```. They are not stranded and more information on how they are used by Bismark can be found on page 41 of this [guide](https://www.bioconductor.org/packages/release/bioc/manuals/methylKit/man/methylKit.pdf).
+
+    #### Bismark Cytosine Reports
+
+    This file is a [genome-wide cytosine report](https://felixkrueger.github.io/Bismark/bismark/methylation_extraction/) output from Bismark. Starting from the coverage output, the Bismark methylation extractor can optionally also output a genome-wide cytosine methylation report.
+    The module ```coverage2cytosine``` (part of the Bismark package) may also be run individually. It is also sorted by chromosomal coordinates but also contains the sequence context and is in the following format:
+
+    ```
+    <chromosome> <position> <strand> <count methylated> <count unmethylated> <C-context> <trinucleotide context>
+
+    ```
+
+    #### bedMethyl Format
+    These are BED files in the [bedMethyl format](https://www.encodeproject.org/data-standards/wgbs/) from ENCODE.
     The bedMethyl file is a bed9+2 file containing the number of reads and the percent methylation. Each column represents the following:
 
     * Reference chromosome or scaffold
@@ -190,7 +240,7 @@ def dmr_methylkit(
     * Tiling Parameter (default = 200): Used in TileMethylCounts(). This value tiles the genome with windows of this specified length and step-size and summarizes the methylation information on those tiles.
     * Tiling Coverage Cutoff (default = 10): Filter based on the number of bases (cytosines) per tiled region.
     * Percent Methylation Difference Cutoff (default = 25): Used in getMethylDiff(). This value defines what the percent methylation difference must be greater than between samples for a region in order to be counted as a DMR.
-    * q-Value Cutoff (default = 0.01): Used in getMethylDiff(). This value defines what the q-value cutoff is in order for a region to be counted as a DMR.
+    * q-Value Cutoff (default = 0.05): Used in getMethylDiff(). This value defines what the q-value cutoff is in order for a region to be counted as a DMR.
 
     ## Output Files
 
@@ -216,12 +266,17 @@ def dmr_methylkit(
 
     This workflow was based on the following [guide](https://bioconductor.org/packages/release/bioc/vignettes/methylKit/inst/doc/methylKit.html) by MethylKit
 
-    [MethylKit GitHub](https://github.com/al2na/methylKit)
+    [MethylKit GitHub](https://github.com/al2na/methylKit) |
+     [MethylKit Vignette](https://www.bioconductor.org/packages/release/bioc/manuals/methylKit/man/methylKit.pdf) |
+     [Bismark Methylation Extraction](https://felixkrueger.github.io/Bismark/bismark/methylation_extraction/)
 
     """
 
     processed_bed_files = format_bed_files(
-        samples=samples, output_directory=output_directory, track_name=track_name
+        samples=samples,
+        output_directory=output_directory,
+        track_name=track_name,
+        bed_format=bed_format,
     )
 
     methyl_results = methyl_task(
@@ -233,6 +288,8 @@ def dmr_methylkit(
         difference_val=difference_val,
         q_val=q_val,
         track_name=track_name,
+        bed_format=bed_format,
+        genome=genome,
     )
 
     return create_track(
@@ -266,6 +323,6 @@ LaunchPlan(
         "tiling_val": 200,
         "tile_coverage": 10,
         "difference_val": 25,
-        "q_val": 0.01,
+        "q_val": 0.05,
     },
 )

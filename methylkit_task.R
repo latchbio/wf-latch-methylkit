@@ -13,6 +13,9 @@ tile_coverage <- as.numeric(args[6])
 difference_val <- as.numeric(args[7])
 q_val <- as.numeric(args[8])
 treatments <- args[9]
+file_format <- args[10]
+genome <- args[11]
+
 
 treatments <- as.numeric(unlist(strsplit(treatments, ",")))
 delimiter <- ","
@@ -22,14 +25,36 @@ file_paths <- strsplit(file_paths, delimiter, fixed = TRUE)[[1]]
 file_paths <- as.list(file_paths)
 
 
-myobj=methRead(file_paths,
+if (file_format == "bedmethyl") {
+  print("Processing bedmethyl files")
+  myobj=methRead(file_paths,
                sample.id=sample_names,
-               assembly="hg38",
+               assembly=genome,
                treatment=treatments,
                context="CpG",
                pipeline=list(fraction=TRUE,chr.col=1,start.col=2,end.col=3,
                              coverage.col=10,strand.col=6,freqC.col=12)
 )
+} else if (file_format == "bismark_cov") {
+  print("Processing Bismark Coverage files")
+  myobj=methRead(file_paths,
+                sample.id=sample_names,
+                assembly=genome,
+                treatment=treatments,
+                pipeline="bismarkCoverage",
+                context="CpG")
+} else {
+  print("Processing Bismark Cytosine Report files")
+  myobj=methRead(file_paths,
+                sample.id=sample_names,
+                assembly=genome,
+                treatment=treatments,
+                pipeline="bismarkCytosineReport",
+                context="CpG")
+
+}
+
+
 
 
 for (i in seq_along(myobj)) {
@@ -50,19 +75,48 @@ for (i in seq_along(myobj)) {
 
 }
 
+print("----------------------------------")
+print("MethylKit Object")
+print("----------------------------------")
+print(myobj)
 filtered.myobj=filterByCoverage(myobj,lo.count=base_cov_val,lo.perc=NULL,
                                 hi.count=NULL,hi.perc=99.9)
-
 tiles=tileMethylCounts(myobj,win.size=tiling_val,step.size=tiling_val,cov.bases=tile_coverage)
-
 meth=unite(tiles, destrand=TRUE)
+print("----------------------------------")
+print("Tiles Methylation Data")
+print("----------------------------------")
+print(meth)
+
+# Print correlation plot
+plot_file <- sprintf("%s/correlation_plot.png", output_dir)
+png(filename = plot_file, width = 800, height = 600)
 getCorrelation(meth,plot=TRUE)
+dev.off()
+
+print("----------------------------------")
+print("Correlation Data")
+print("----------------------------------")
+getCorrelation(meth,plot=TRUE)
+
 myDiff=calculateDiffMeth(meth)
 
+print("----------------------------------")
+print("Correlation Data")
+print("----------------------------------")
 myDiff25p=getMethylDiff(myDiff,difference=difference_val,qvalue=q_val)
 
-write.csv(myDiff25p@.Data,
+print("----------------------------------")
+print("DMR Regions")
+print("----------------------------------")
+print(myDiff25p)
+
+# write.csv(myDiff25p@.Data,
+#           paste0(output_dir, "/DMR_regions.csv"), row.names=FALSE)
+write.csv(myDiff25p,
           paste0(output_dir, "/DMR_regions.csv"), row.names=FALSE)
+write.csv(meth,
+          paste0(output_dir, "/merged_methylation_data.csv"), row.names=FALSE)
 
 my_data <- read.csv(paste0(output_dir, "/DMR_regions.csv"))
 new_column_names <- c("chr", "start", "end", "strand", "p_value", "q_value", "percent_difference")

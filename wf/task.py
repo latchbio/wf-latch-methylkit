@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Annotated, Iterable, List, Optional, Tuple, Union
 
@@ -29,9 +30,23 @@ class ProcessedBED:
     treatment: bool = False
 
 
+class FileFormat(Enum):
+    bismark_cov = "Bismark Coverage File"
+    bismark_cytosine = "Bismark Cytosine Report"
+    bedmethyl = "bedMethyl Format"
+
+
+class Genome(Enum):
+    hg38 = "hg38"
+    hg19 = "hg19"
+
+
 @medium_task
 def format_bed_files(
-    samples: List[Sample], output_directory: LatchOutputDir, track_name: str
+    samples: List[Sample],
+    output_directory: LatchOutputDir,
+    track_name: str,
+    bed_format: FileFormat = FileFormat.bismark_cov,
 ) -> List[ProcessedBED]:
 
     track_name = track_name.replace(" ", "_")
@@ -43,42 +58,74 @@ def format_bed_files(
 
     bed_results = []
 
-    for s in samples:
-        sample_name = s.sample_name
-        table = pd.read_csv(s.bed_file.local_path, sep="\t", header=None)
-        table[11] = table[10] * 0.01 * table[9]
-        table[12] = table[10] * 0.01
-        table[11] = table[11].round()
-        table[11] = pd.to_numeric(table[11], downcast="integer")
-        bed_table = table[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]]
-        bed_table = bed_table.fillna(0)
-        # table[11] = table[10] * 0.01 * table[9]
-        # table[11] = table[11].round()
-        # table[11] = pd.to_numeric(table[11], downcast="integer")
-        # bed_table = table[[0, 1, 2, 5, 9, 11]]
-        # bed_table.columns = ["chr", "start", "end", "strand", "coverage", "numC"]
-        # bed_table = bed_table.fillna(0)
-        s_path = str(output_dirpath) + f"/{sample_name}.bed"
-        bed_table.to_csv(
-            s_path,
-            index=False,
-            header=False,
-            sep="\t",
-        )
-        print(s_path)
-        output_location = f"{output_directory.remote_directory}/{track_name}/processed_beds/{s.sample_name}.bed"
-        print(output_location)
+    if bed_format == FileFormat.bedmethyl:
 
-        bed_results.append(
-            ProcessedBED(
-                sample_name=s.sample_name,
-                bed_file=LatchFile(
-                    s_path,
-                    output_location,
-                ),
-                treatment=s.treatment,
+        for s in samples:
+            sample_name = s.sample_name
+            table = pd.read_csv(s.bed_file.local_path, sep="\t", header=None)
+            table[11] = table[10] * 0.01 * table[9]
+            table[12] = table[10] * 0.01
+            table[11] = table[11].round()
+            table[11] = pd.to_numeric(table[11], downcast="integer")
+            bed_table = table[[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]]
+            bed_table = bed_table.fillna(0)
+            # table[11] = table[10] * 0.01 * table[9]
+            # table[11] = table[11].round()
+            # table[11] = pd.to_numeric(table[11], downcast="integer")
+            # bed_table = table[[0, 1, 2, 5, 9, 11]]
+            # bed_table.columns = ["chr", "start", "end", "strand", "coverage", "numC"]
+            # bed_table = bed_table.fillna(0)
+            s_path = str(output_dirpath) + f"/{sample_name}.bed"
+            bed_table.to_csv(
+                s_path,
+                index=False,
+                header=False,
+                sep="\t",
             )
-        )
+            print(s_path)
+            output_location = f"{output_directory.remote_directory}/{track_name}/processed_beds/{s.sample_name}.bed"
+            print(output_location)
+
+            bed_results.append(
+                ProcessedBED(
+                    sample_name=s.sample_name,
+                    bed_file=LatchFile(
+                        s_path,
+                        output_location,
+                    ),
+                    treatment=s.treatment,
+                )
+            )
+    else:
+
+        for s in samples:
+            sample_name = s.sample_name
+            bed_table = pd.read_csv(s.bed_file.local_path, sep="\t", header=None)
+            print("------------------------")
+            print(f"Sample: {sample_name}")
+            print(bed_table.head())
+            print("\n")
+            s_path = str(output_dirpath) + f"/{sample_name}.bed"
+            bed_table.to_csv(
+                s_path,
+                index=False,
+                header=False,
+                sep="\t",
+            )
+            print(s_path)
+            output_location = f"{output_directory.remote_directory}/{track_name}/processed_beds/{s.sample_name}.bed"
+            print(output_location)
+
+            bed_results.append(
+                ProcessedBED(
+                    sample_name=s.sample_name,
+                    bed_file=LatchFile(
+                        s_path,
+                        output_location,
+                    ),
+                    treatment=s.treatment,
+                )
+            )
 
     return bed_results
 
@@ -92,7 +139,9 @@ def methyl_task(
     tiling_val: int = 200,
     tile_coverage: int = 10,
     difference_val: int = 25,
-    q_val: float = 0.01,
+    q_val: float = 0.05,
+    bed_format: FileFormat = FileFormat.bismark_cov,
+    genome: Genome = Genome.hg19,
 ) -> LatchDir:
 
     track_name = track_name.replace(" ", "_")
@@ -120,6 +169,32 @@ def methyl_task(
     output_dirpath.mkdir(parents=True, exist_ok=True)
     print("MethylKit Output Directory: ", output_dirpath)
 
+    bed_format_str = "bedmethyl"
+    if bed_format == FileFormat.bismark_cov:
+        bed_format_str = "bismark_cov"
+    if bed_format == FileFormat.bismark_cytosine:
+        bed_format_str = "bismark_cytosine"
+
+    print(
+        " ".join(
+            [
+                "Rscript",
+                "methylkit_task.R",
+                str(file_names),
+                str(file_paths),
+                str(output_dirpath),
+                str(base_cov_val),
+                str(tiling_val),
+                str(tile_coverage),
+                str(difference_val),
+                str(q_val),
+                str(treatements_str),
+                str(bed_format_str),
+                str(genome.value),
+            ]
+        )
+    )
+
     subprocess.run(
         " ".join(
             [
@@ -134,6 +209,8 @@ def methyl_task(
                 str(difference_val),
                 str(q_val),
                 str(treatements_str),
+                str(bed_format_str),
+                str(genome.value),
             ]
         ),
         check=True,
