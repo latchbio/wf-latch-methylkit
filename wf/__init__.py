@@ -93,13 +93,10 @@ flow = [
 """Minimal metadata object - fill in fields with your own values"""
 metadata = LatchMetadata(
     display_name="MethylKit DMR Annotator",
-    # documentation="CHANGE ME",
     author=LatchAuthor(
         name="LatchBio",
-        # github="CHANGE ME",
     ),
-    # repository="CHANGE ME",
-    # license="CHANGE ME",
+    repository="https://github.com/latchbio/wf-latch-methylkit",
     parameters={
         "samples": LatchParameter(
             display_name="Input Samples",
