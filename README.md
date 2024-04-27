@@ -1,1 +1,1 @@
-# wf-epilabs-methylkit
+# wf-methylkit
